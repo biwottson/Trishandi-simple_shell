@@ -1,53 +1,89 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/wait.h> // Include sys/wait.h for the wait() function
+
+#define BUFFER_SIZE 1024
+
+/**
+ * display_prompt - Display the shell prompt.
+ */
+void display_prompt(void);
 
 int main(void)
 {
-    size_t buf_size = 0;
-    char *buf = NULL;
-    char *token;
-    int status, i = 0;
-    char **array;
-    pid_t child_pid;
+    char buffer[BUFFER_SIZE]; // Buffer to store user input
+    char *command;           // Pointer to the command to execute
+    ssize_t read_bytes;
+    int status; // Store the status of child process
 
     while (1)
     {
-        write(1, "#cisfun$ ", 9); // Show shell prompt
-        getline(&buf, &buf_size, stdin); // Input user input
-        token = strtok(buf, " \t\n"); // Tokenize input_command
-        array = malloc(sizeof(char *) * 1024); // Allocate memory (command arguments)
+        display_prompt();
 
-        while (token)
+        // Read user input
+        read_bytes = read(STDIN_FILENO, buffer, BUFFER_SIZE);
+
+        if (read_bytes == -1)
         {
-            array[i] = token;
-            token = strtok(NULL, " \t\n");
-            i++;
+            perror("read");
+            exit(EXIT_FAILURE);
         }
-        array[i] = NULL; // Set last element of the array to NULL for execvp
-        child_pid = fork(); // Create a child_process
 
-        if (child_pid == 0)
+        if (read_bytes == 0) // End of File (Ctrl+D)
         {
-            if (execve(array[0], array, NULL) == -1) // Execute the command
+            printf("\n");
+            break;
+        }
+
+        // Remove trailing newline
+        if (buffer[read_bytes - 1] == '\n')
+        {
+            buffer[read_bytes - 1] = '\0';
+        }
+
+        // Execute the command
+        command = buffer;
+        if (access(command, X_OK) == 0)
+        {
+            pid_t pid = fork();
+
+            if (pid == -1)
             {
-                perror("Error executing command");
-                exit(1); // Exit the child process with an error status
+                perror("fork");
+                exit(EXIT_FAILURE);
+            }
+
+            if (pid == 0)
+            {
+                // Child process
+                if (execve(command, NULL, NULL) == -1)
+                {
+                    perror("execve"); // This will only be reached if execve fails
+                    exit(EXIT_FAILURE);
+                }
+            }
+            else
+            {
+                // Parent process
+                wait(&status); // Wait for the child process to finish
             }
         }
         else
         {
-            wait(&status); // Wait for the child_process to finish
+            fprintf(stderr, "%s: command not found\n", command);
         }
-
-        // Clean up
-        i = 0;
-        free(array);
-        buf = NULL; // Set buf to NULL after freeing
     }
 
-    return 0;
+    return EXIT_SUCCESS;
 }
+
+/**
+ * display_prompt - Display the shell prompt.
+ */
+void display_prompt(void)
+{
+    printf("#cisfun$ ");
+}
+
